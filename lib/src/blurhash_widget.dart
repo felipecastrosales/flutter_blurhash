@@ -114,8 +114,11 @@ class BlurHashState extends State<BlurHash> {
   Widget build(BuildContext context) => Stack(
         fit: StackFit.expand,
         alignment: Alignment.center,
+        clipBehavior: Clip.none,
         children: [
-          buildBlurHashBackground(),
+          Positioned.fill(
+            child: buildBlurHashBackground(),
+          ),
           if (widget.image != null) prepareDisplayedImage(widget.image!),
         ],
       );
@@ -142,6 +145,19 @@ class BlurHashState extends State<BlurHash> {
               curve: widget.curve,
               onCompleted: () => widget.onDisplayed?.call(),
             );
+          }
+
+          if (loadingProgress.expectedTotalBytes == null ||
+              (loadingProgress.expectedTotalBytes ?? 0) >= 0) {
+            // return Center(
+            //   child: CircularProgressIndicator(
+            //     value: loadingProgress.expectedTotalBytes != null
+            //         ? loadingProgress.cumulativeBytesLoaded /
+            //             loadingProgress.expectedTotalBytes!
+            //         : null,
+            //   ),
+            // );
+            return const SizedBox();
           } else {
             return const SizedBox();
           }
@@ -151,8 +167,13 @@ class BlurHashState extends State<BlurHash> {
   /// Decode the blurhash then display the resulting Image
   Widget buildBlurHashBackground() => FutureBuilder<ui.Image>(
         future: _image,
-        builder: (ctx, snap) =>
-            snap.hasData ? Image(image: UiImage(snap.data!), fit: widget.imageFit) : Container(color: widget.color),
+        builder: (ctx, snap) => snap.hasData
+            ? Image(
+                image: UiImage(snap.data!),
+                fit: widget.imageFit,
+                errorBuilder: widget.errorBuilder,
+              )
+            : Container(color: widget.color),
       );
 }
 
@@ -175,7 +196,8 @@ class _DisplayImage extends StatefulWidget {
   _DisplayImageState createState() => _DisplayImageState();
 }
 
-class _DisplayImageState extends State<_DisplayImage> with SingleTickerProviderStateMixin {
+class _DisplayImageState extends State<_DisplayImage>
+    with SingleTickerProviderStateMixin {
   late Animation<double> opacity;
   late AnimationController controller;
 
@@ -193,13 +215,17 @@ class _DisplayImageState extends State<_DisplayImage> with SingleTickerProviderS
     opacity = Tween<double>(begin: .0, end: 1.0).animate(curved);
     controller.forward();
 
-    curved.addStatusListener((status) {
-      if (status == AnimationStatus.completed) widget.onCompleted.call();
-    });
+    curved.addStatusListener(listener);
+  }
+
+  void listener(AnimationStatus status) {
+    if (status == AnimationStatus.completed) widget.onCompleted.call();
   }
 
   @override
   void dispose() {
+    controller.removeStatusListener(listener);
+    if (controller.isAnimating) controller.stop();
     controller.dispose();
     super.dispose();
   }
@@ -212,10 +238,12 @@ class UiImage extends ImageProvider<UiImage> {
   const UiImage(this.image, {this.scale = 1.0});
 
   @override
-  Future<UiImage> obtainKey(ImageConfiguration configuration) => SynchronousFuture<UiImage>(this);
+  Future<UiImage> obtainKey(ImageConfiguration configuration) =>
+      SynchronousFuture<UiImage>(this);
 
   @override
-  ImageStreamCompleter load(UiImage key, DecoderCallback decode) => OneFrameImageStreamCompleter(_loadAsync(key));
+  ImageStreamCompleter load(UiImage key, DecoderCallback decode) =>
+      OneFrameImageStreamCompleter(_loadAsync(key));
 
   Future<ImageInfo> _loadAsync(UiImage key) async {
     assert(key == this);
@@ -233,5 +261,6 @@ class UiImage extends ImageProvider<UiImage> {
   int get hashCode => hashValues(image.hashCode, scale);
 
   @override
-  String toString() => '$runtimeType(${describeIdentity(image)}, scale: $scale)';
+  String toString() =>
+      '$runtimeType(${describeIdentity(image)}, scale: $scale)';
 }
