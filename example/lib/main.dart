@@ -248,7 +248,7 @@ class _SynchronizedDisplayState extends State<SynchronizedDisplay> with SingleTi
 
   @override
   void dispose() {
-    controller.dispose();
+    // controller.dispose();
     super.dispose();
   }
 

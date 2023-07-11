@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -11,6 +12,7 @@ class BlurHash extends StatefulWidget {
   const BlurHash({
     required this.hash,
     Key? key,
+    this.imageKey,
     this.color = Colors.blueGrey,
     this.imageFit = BoxFit.fill,
     this.decodingWidth = _DEFAULT_SIZE,
@@ -20,6 +22,7 @@ class BlurHash extends StatefulWidget {
     this.onDisplayed,
     this.onReady,
     this.onStarted,
+    this.onError,
     this.duration = const Duration(milliseconds: 1000),
     this.httpHeaders = const {},
     this.curve = Curves.easeOut,
@@ -39,6 +42,9 @@ class BlurHash extends StatefulWidget {
 
   /// Callback when image is downloaded
   final VoidCallback? onStarted;
+
+  /// Calback when image is error
+  final FutureOr<Image>? onError;
 
   /// Hash to decode
   final String hash;
@@ -68,6 +74,9 @@ class BlurHash extends StatefulWidget {
   /// Network image errorBuilder
   final ImageErrorWidgetBuilder? errorBuilder;
 
+  // Key to use for the widget
+  final Key? imageKey;
+
   @override
   BlurHashState createState() => BlurHashState();
 }
@@ -89,16 +98,16 @@ class BlurHashState extends State<BlurHash> {
     loading = false;
   }
 
-  @override
-  void didUpdateWidget(BlurHash oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.hash != oldWidget.hash ||
-        widget.image != oldWidget.image ||
-        widget.decodingWidth != oldWidget.decodingWidth ||
-        widget.decodingHeight != oldWidget.decodingHeight) {
-      _init();
-    }
-  }
+  // @override
+  // void didUpdateWidget(BlurHash oldWidget) {
+  //   super.didUpdateWidget(oldWidget);
+  //   if (widget.hash != oldWidget.hash ||
+  //       widget.image != oldWidget.image ||
+  //       widget.decodingWidth != oldWidget.decodingWidth ||
+  //       widget.decodingHeight != oldWidget.decodingHeight) {
+  //     _init();
+  //   }
+  // }
 
   void _decodeImage() {
     _image = blurHashDecodeImage(
@@ -106,8 +115,8 @@ class BlurHashState extends State<BlurHash> {
       width: widget.decodingWidth,
       height: widget.decodingHeight,
     );
-
     _image.whenComplete(() => widget.onDecoded?.call());
+    // .onError((error, stackTrace) {},);
   }
 
   @override
@@ -117,125 +126,43 @@ class BlurHashState extends State<BlurHash> {
         clipBehavior: Clip.none,
         children: [
           Positioned.fill(
-            child: buildBlurHashBackground(),
+            // child: StreamBuilder<ui.Image>(
+            //   stream: Stream.fromFuture(_image),
+            child: FutureBuilder<ui.Image>(
+              future: _image,
+              builder: (_, snap) => snap.data != null &&
+                      snap.data!.debugDisposed == false &&
+                      snap.data!.width > 0 &&
+                      snap.data!.height > 0 &&
+                      !loading &&
+                      snap.hasData &&
+                      !snap.hasError
+                  ? Image(
+                      image: UiImage(
+                        snap.data!,
+                        // key: ValueKey(_image.hashCode),
+                        key: widget.key,
+                      ),
+                      fit: widget.imageFit,
+                      errorBuilder: widget.errorBuilder,
+                    )
+                  : Container(color: widget.color),
+            ),
           ),
-          if (widget.image != null) prepareDisplayedImage(widget.image!),
         ],
       );
-
-  Widget prepareDisplayedImage(String image) => Image.network(
-        image,
-        fit: widget.imageFit,
-        headers: widget.httpHeaders,
-        errorBuilder: widget.errorBuilder,
-        loadingBuilder: (context, img, loadingProgress) {
-          // Download started
-          if (loading == false) {
-            loading = true;
-            widget.onStarted?.call();
-          }
-
-          if (loadingProgress == null) {
-            // Image is now loaded, trigger the event
-            loaded = true;
-            widget.onReady?.call();
-            return _DisplayImage(
-              child: img,
-              duration: widget.duration,
-              curve: widget.curve,
-              onCompleted: () => widget.onDisplayed?.call(),
-            );
-          }
-
-          if (loadingProgress.expectedTotalBytes == null ||
-              (loadingProgress.expectedTotalBytes ?? 0) >= 0) {
-            // return Center(
-            //   child: CircularProgressIndicator(
-            //     value: loadingProgress.expectedTotalBytes != null
-            //         ? loadingProgress.cumulativeBytesLoaded /
-            //             loadingProgress.expectedTotalBytes!
-            //         : null,
-            //   ),
-            // );
-            return const SizedBox();
-          } else {
-            return const SizedBox();
-          }
-        },
-      );
-
-  /// Decode the blurhash then display the resulting Image
-  Widget buildBlurHashBackground() => FutureBuilder<ui.Image>(
-        future: _image,
-        builder: (ctx, snap) => snap.hasData
-            ? Image(
-                image: UiImage(snap.data!),
-                fit: widget.imageFit,
-                errorBuilder: widget.errorBuilder,
-              )
-            : Container(color: widget.color),
-      );
-}
-
-// Inner display details & controls
-class _DisplayImage extends StatefulWidget {
-  final Widget child;
-  final Duration duration;
-  final Curve curve;
-  final VoidCallback onCompleted;
-
-  const _DisplayImage({
-    required this.child,
-    this.duration = const Duration(milliseconds: 800),
-    required this.curve,
-    required this.onCompleted,
-    Key? key,
-  }) : super(key: key);
-
-  @override
-  _DisplayImageState createState() => _DisplayImageState();
-}
-
-class _DisplayImageState extends State<_DisplayImage>
-    with SingleTickerProviderStateMixin {
-  late Animation<double> opacity;
-  late AnimationController controller;
-
-  @override
-  Widget build(BuildContext context) => FadeTransition(
-        opacity: opacity,
-        child: widget.child,
-      );
-
-  @override
-  void initState() {
-    super.initState();
-    controller = AnimationController(duration: widget.duration, vsync: this);
-    final curved = CurvedAnimation(parent: controller, curve: widget.curve);
-    opacity = Tween<double>(begin: .0, end: 1.0).animate(curved);
-    controller.forward();
-
-    curved.addStatusListener(listener);
-  }
-
-  void listener(AnimationStatus status) {
-    if (status == AnimationStatus.completed) widget.onCompleted.call();
-  }
-
-  @override
-  void dispose() {
-    controller.removeStatusListener(listener);
-    if (controller.isAnimating) controller.stop();
-    controller.dispose();
-    super.dispose();
-  }
 }
 
 class UiImage extends ImageProvider<UiImage> {
   final ui.Image image;
   final double scale;
+  final Key? key;
 
-  const UiImage(this.image, {this.scale = 1.0});
+  const UiImage(
+    this.image, {
+    this.key,
+    this.scale = 1.0,
+  });
 
   @override
   Future<UiImage> obtainKey(ImageConfiguration configuration) =>
