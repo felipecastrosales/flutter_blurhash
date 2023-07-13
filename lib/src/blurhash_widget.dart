@@ -140,8 +140,7 @@ class BlurHashState extends State<BlurHash> {
                   ? Image(
                       image: UiImage(
                         snap.data!,
-                        // key: ValueKey(_image.hashCode),
-                        key: widget.key,
+                        key: widget.imageKey,
                       ),
                       fit: widget.imageFit,
                       errorBuilder: widget.errorBuilder,
